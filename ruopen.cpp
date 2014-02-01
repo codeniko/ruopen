@@ -750,6 +750,7 @@ int main()
 			cout << "  list                - list all courses being spotted\n";
 			cout << "  quiet               - enable/disable messages while spotting\n";
 			cout << "  rm | remove         - remove a course being spotted\n";
+			cout << " rm <row>             - remove a course being spotted, where row is # from list\n";
 			cout << "  spot <###:###:##>   - add a course to spot\n";
 			cout << "  spot <### ### ##>   - add a course to spot\n";
 			cout << "  spot                - add a course to spot\n";

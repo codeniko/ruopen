@@ -37,7 +37,7 @@ bool getDepartments();
 bool init();
 inline void printInfo();
 void printSpotting();
-void registerForCourse(Department &, Course &, Section &);
+void registerForCourse(Section *);
 bool removeCourse(int);
 bool setCampus(string);
 bool setSemester(string);

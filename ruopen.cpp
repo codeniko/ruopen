@@ -408,7 +408,7 @@ void printSpotting()
 		cout << "  Not spotting any courses..." << endl;
 }
 
-void registerForCourse(Section &section)
+void registerForCourse(Section *section)
 {
 	curl_easy_setopt(curl.handle, CURLOPT_HTTPHEADER, curl.headers.text);
 	curl_easy_setopt(curl.handle, CURLOPT_REFERER, "https://sims.rutgers.edu/webreg/chooseSemester.htm?login=cas"); //default
@@ -453,7 +453,7 @@ void registerForCourse(Section &section)
 	}
 	curl.response.clear();
 
-	postfields = "coursesToAdd[0].courseIndex="+section.courseIndex+"&coursesToAdd[1].courseIndex=&coursesToAdd[2].courseIndex=&coursesToAdd[3].courseIndex=&coursesToAdd[4].courseIndex=&coursesToAdd[5].courseIndex=&coursesToAdd[6].courseIndex=&coursesToAdd[7].courseIndex=&coursesToAdd[8].courseIndex=&coursesToAdd[9].courseIndex=";
+	postfields = "coursesToAdd[0].courseIndex="+section->courseIndex+"&coursesToAdd[1].courseIndex=&coursesToAdd[2].courseIndex=&coursesToAdd[3].courseIndex=&coursesToAdd[4].courseIndex=&coursesToAdd[5].courseIndex=&coursesToAdd[6].courseIndex=&coursesToAdd[7].courseIndex=&coursesToAdd[8].courseIndex=&coursesToAdd[9].courseIndex=";
 	curl_easy_setopt(curl.handle, CURLOPT_URL, "https://sims.rutgers.edu/webreg/addCourses.htm");
 	curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, postfields.c_str());
 	curl.res = curl_easy_perform(curl.handle);
@@ -478,16 +478,16 @@ inline void testSMS() {
 	Section section;
 	dept.dept = "TESTSMS";
 	cout << "Sending a test message to " << info.smsNumber << " from " << info.smsEmail << "." << endl;
-	spotted(dept, course, section);
+	spotted(&dept, &course, &section);
 }
 
 //A course has been spotted! Alert the user by playing a sound file and sending an SMS
-void spotted(Department &dept, Course &course, Section &section)
+void spotted(Department *dept, Course *course, Section *section)
 {
 	string whatspotted = "This is a test message from RUopen.";
-	if (dept.dept != "TESTSMS") {
-		section.spotCounter = 200;
-		whatspotted = "["+section.courseIndex+"] "+dept.deptCode+":"+course.courseCode+":"+section.section+" "+course.course+" has been spotted!\r\n";
+	if (dept->dept != "TESTSMS") {
+		section->spotCounter = 200;
+		whatspotted = "["+section->courseIndex+"] "+dept->deptCode+":"+course->courseCode+":"+section->section+" "+course->course+" has been spotted!\r\n";
 		cout << whatspotted << flush;
 		system("mpg321 -q alert.mp3");
 	}
@@ -556,7 +556,7 @@ void spot()
 								cout << "Checking "<<'[' << section->courseIndex << "] " << dept->deptCode << ":" << course->courseCode << ":" << section->section << ' ' << course->course << ".......";
 							if (section_json[s].get("openStatus", false).asBool() == true && section->spotCounter <= 0) {
 								cout << "OPEN!" << endl;
-								spotted(*dept, *course, *section);
+								boost::thread threadspotted(spotted, &(*dept), &(*course), &(*section));
 							} else
 								if (!info.quiet)
 									cout << "closed." << endl;;
@@ -710,15 +710,23 @@ int main()
 				cout << dept<<':'<<course<<':'<<section<< " is now being spotted." << endl;
 			else
 				cerr << "ERROR: Unable to retrieve Rutgers data or " <<dept<<':'<<course<<':'<<section<< " is invalid." << endl;
-		} else if (cmd == "rm" || cmd == "remove") {
-			printSpotting();
-			cout << "Enter the row # containing the course to remove: ";
-			getline(cin, cmd);
+		} else if (cmd == "rm" || cmd == "remove" || cmd.substr(0,3) == "rm " || cmd.substr(0,7) == "remove ") {
+			boost::regex reNumOnly("^\\s*([0-9]+)\\s*$");
+			boost::regex reWithKeyword("^\\s*(?:rm|remove)\\s+([0-9]+)\\s*$");
 			boost::cmatch what; // what[1]=dept, what[2]=course, what[3]=section
-			boost::regex re("^\\s*([0-9]+)\\s*$");
-			if (!boost::regex_match(cmd.c_str(), what, re)) {
-				cout << "Error: Enter a number next time!" << endl;
-				continue;
+			if (cmd == "rm" || cmd == "remove") {
+				printSpotting();
+				cout << "Enter the row # containing the course to remove: ";
+				getline(cin, cmd);
+				if (!boost::regex_match(cmd.c_str(), what, reNumOnly)) {
+					cout << "Error: Enter a number next time!" << endl;
+					continue;
+				}
+			} else {
+				if (!boost::regex_match(cmd.c_str(), what, reWithKeyword)) {
+					cout << "Error: Invalid syntax for removal. Type help for the correct syntax." << endl;
+					continue;
+				}
 			}
 			string row(what[1].first, what[1].second);
 			if (removeCourse(atoi(row.c_str())))

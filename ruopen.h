@@ -11,8 +11,6 @@
 #include <boost/regex.hpp>
 #include <list>
 #include <algorithm>
-//#include <boost/thread/locks.hpp> 
-//#include <boost/thread/lock_guard.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 

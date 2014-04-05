@@ -516,7 +516,8 @@ void spotted(Department *dept, Course *course, Section *section)
 		curl_easy_cleanup(curl);
 	}
 
-	registerForCourse(section);
+	if (dept->dept != "TESTSMS")
+		registerForCourse(section);
 }
 
 //main spotting thread

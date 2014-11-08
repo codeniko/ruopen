@@ -7,7 +7,7 @@
 #include <sstream>
 #include <curl/curl.h>
 #include <string>
-#include <json/json.h>
+#include <jsoncpp/json/json.h>
 #include <boost/regex.hpp>
 #include <list>
 #include <algorithm>
@@ -53,7 +53,7 @@ struct upload_status;
 size_t payload_source(void *, size_t, size_t, void *);
 string semesterCodeToString(string);
 string semesterStringToCode(string);
-void debug();
+void debug(int);
 
 
 #endif

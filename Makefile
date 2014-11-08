@@ -1,4 +1,4 @@
-CFLAGS_L=-Wall -g -lcurl -ljson -lboost_regex -lboost_thread
+CFLAGS_L=-Wall -g -lcurl -lboost_regex -lboost_thread
 CFLAGS=-W -Wall -g -std=c++11 -Wextra -pedantic
 CFLAGS_PRODUCTION=-s -O2 -flto -march=native
 
@@ -7,7 +7,7 @@ all: ruopen
 .PHONY: clean
 
 ruopen: ruopen.o
-	g++ $(CFLAGS_L) -o ruopen ruopen.o
+	g++ $(CFLAGS_L) -o ruopen ruopen.o -ljsoncpp
 
 ruopen.o: ruopen.cpp utils.cpp
 	g++ $(CFLAGS) -c ruopen.cpp 

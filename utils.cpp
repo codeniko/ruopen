@@ -82,10 +82,10 @@ size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 	return 0;
 }
 
-void debug()
+void debug(int id)
 {
 	ofstream file;
-	file.open("response.html");
+	file.open("response"+to_string(id)+".html");
 	file << curl.response;
 	file.close();
 	cout << "Response code: " << curl.res << endl;

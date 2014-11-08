@@ -24,6 +24,7 @@ struct Info {
 	string netid;
 	string netidPassword;
 	bool silent;
+	bool alert;
 };
 
 struct Section {
@@ -92,13 +93,16 @@ bool init()
 	curl.headers.json = curl_slist_append(curl.headers.json, "Content-Type: application/json");
 	curl.headers.json = curl_slist_append(curl.headers.json, "charsets: utf-8");
 
-	curl_easy_setopt(curl.handle, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64; rv:17.0) Gecko/20130917 Firefox/17.0 Iceweasel/17.0.9");
+	curl_easy_setopt(curl.handle, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64; rv:31.0) Gecko/20100101 Firefox/31.0 Iceweasel/31.2.0");
 	curl_easy_setopt(curl.handle, CURLOPT_NOPROGRESS, 1); // turn of progress bar
 	// curl_easy_setopt(curl.handle, CURLOPT_FAILONERROR, 1); // fail on error
 	curl_easy_setopt(curl.handle, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(curl.handle, CURLOPT_MAXREDIRS, 20);
 	curl_easy_setopt(curl.handle, CURLOPT_WRITEFUNCTION, writeCallback);
 	curl_easy_setopt(curl.handle, CURLOPT_WRITEDATA, &curl.response);
 	curl_easy_setopt(curl.handle, CURLOPT_AUTOREFERER, 1);
+	curl_easy_setopt(curl.handle, CURLOPT_TIMEOUT_MS, 30000);
+	curl_easy_setopt(curl.handle, CURLOPT_CONNECTTIMEOUT, 30000);
 	//curl_easy_setopt(curl.handle, CURLOPT_VERBOSE, 1L);
 	// curl_easy_setopt(curl.handle, CURLOPT_CUSTOMREQUEST, "PUT");
 	//	curl_easy_setopt(curl.handle, CURLOPT_HEADER, 1); // A parameter set to 1 tells the library to include the header in the body output.
@@ -112,6 +116,7 @@ bool init()
 	// curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, jsonput.c_str());
 	// curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDSIZE, jsonput.length());
 	info.silent = false;
+	info.alert = true;
 	setCampus("new brunswick");
 	return setSemester(getCurrentSemester());
 }
@@ -190,13 +195,13 @@ bool getDepartments()
 	curl_easy_setopt(curl.handle, CURLOPT_REFERER, "http://sis.rutgers.edu/soc");
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
-		//cerr << "ERROR: Unable to retrieve Rutgers data." << endl;
+		cerr << "ERROR: Unable to retrieve Rutgers department data (1)." << endl;
 		return false;
 	}
 
 	Json::Reader jsonreader;
 	if (!jsonreader.parse(curl.response, dept_json) || dept_json.size() == 0) {
-		//cerr << "ERROR: Unable to retrieve Rutgers data." << endl;
+		cerr << "ERROR: Unable to retrieve Rutgers department data (2)." << endl;
 		return false;
 	}
 
@@ -213,14 +218,14 @@ Json::Value *getCourses(string &deptcode)
 	curl_easy_setopt(curl.handle, CURLOPT_REFERER, "http://sis.rutgers.edu/soc");
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
-		cerr << "ERROR: Unable to retrieve Rutgers data." << endl;
+		cerr << "ERROR: Unable to retrieve Rutgers course data (1)." << endl;
 		return NULL;
 	}
 
 	Json::Value *courses = new Json::Value();
 	Json::Reader jsonreader;
 	if (!jsonreader.parse(curl.response, *courses) || courses->size() == 0) {
-		cerr << "ERROR: Unable to retrieve Rutgers data." << endl;
+		cerr << "ERROR: Unable to retrieve Rutgers course data (2)." << endl;
 		return NULL;
 	}
 
@@ -382,7 +387,7 @@ void createConfFile()
 	conf <<	"[CAMPUS]\nNew Brunswick\n\n[SEMESTER]\n\n" <<
 		"[NETID]\n\n[NETID PASSWORD]\n\n" <<
 		"[SMS EMAIL]\nexample@yahoo.com\n\n[SMS PASSWORD]\nPasswordForEmailGoesHere\n\n" <<
-		"[SMS PHONE NUMBER]\n1234567890\n\n[SILENT]\nfalse\n\n[COURSES]\n\n";
+		"[SMS PHONE NUMBER]\n1234567890\n\n[SILENTMESSAGES]\nfalse\n\n[ALERT]\ntrue\n\n[COURSES]\n\n";
 
 	conf.close();
 }
@@ -414,6 +419,7 @@ void registerForCourse(Section *section)
 		curl.response.clear();
 		return;
 	}
+	debug(1);
 
 	boost::cmatch what; // what[1]=dept, what[2]=course, what[3]=section
 	boost::regex re("input type=\"hidden\" name=\"lt\" value=\"_cNoOpConversation (.+?)\"");
@@ -434,6 +440,7 @@ void registerForCourse(Section *section)
 		curl.response.clear();
 		return;
 	}
+	debug(2);
 	curl.response.clear();
 
 	postfields = "semesterSelection="+info.semester+"&submit=Continue+&#8594";
@@ -446,6 +453,7 @@ void registerForCourse(Section *section)
 		curl.response.clear();
 		return;
 	}
+	debug(3);
 	curl.response.clear();
 
 	postfields = "coursesToAdd[0].courseIndex="+section->courseIndex+"&coursesToAdd[1].courseIndex=&coursesToAdd[2].courseIndex=&coursesToAdd[3].courseIndex=&coursesToAdd[4].courseIndex=&coursesToAdd[5].courseIndex=&coursesToAdd[6].courseIndex=&coursesToAdd[7].courseIndex=&coursesToAdd[8].courseIndex=&coursesToAdd[9].courseIndex=";
@@ -458,6 +466,7 @@ void registerForCourse(Section *section)
 		return;
 	}
 	
+	debug(4);
 	curl.response.clear();
 	curl_easy_setopt(curl.handle, CURLOPT_HTTPHEADER, curl.headers.json);
 	curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, NULL);
@@ -484,7 +493,8 @@ void spotted(Department *dept, Course *course, Section *section)
 		section->spotCounter = 200;
 		whatspotted = "["+section->courseIndex+"] "+dept->deptCode+":"+course->courseCode+":"+section->section+" "+course->course+" has been spotted!\r\n";
 		cout << whatspotted << flush;
-		system("mpg321 -q alert.mp3");
+		if (info.alert)
+			system("mpg321 -q alert.mp3");
 	}
 	CURL *curl;
 	CURLcode res = CURLE_OK;
@@ -538,11 +548,13 @@ void spot()
 		int sleeptime = rand() % 3000 + 1001;
 		for (ListDepts::iterator dept = spotting.begin(); dept != spotting.end(); ++dept) {
 			Json::Value *course_json = getCourses(dept->deptCode);
-			if (course_json == NULL) {
+			while (course_json == NULL) {
+				sleeptime = rand() % 3000 + 1001;
 				if (!info.silent)
 					cout << "Unable to retrieve courses, trying again in " << sleeptime+5000 << "ms." << endl;
 				boost::this_thread::sleep(boost::posix_time::milliseconds(sleeptime+5000));
-			}
+				course_json = getCourses(dept->deptCode);
+			} 
 			for (ListCourses::iterator course = dept->courses.begin(); course != dept->courses.end(); ++course) {
 				Json::Value section_json = (*course_json)[course->json_index]["sections"];
 				for (ListSections::iterator section = course->sections.begin(); section != course->sections.end(); ++section) {
@@ -617,12 +629,18 @@ int main()
 			if (line == "[SMS PHONE NUMBER]") info.smsNumber = line2;
 			else if (line == "[SMS EMAIL]") info.smsEmail = line2;
 			else info.smsPassword = line2;
-		} else if (line == "[SILENT]") {
+		} else if (line == "[SILENTMESSAGES]") {
 			getline(conf, line);
 			if (line == "true")
 				info.silent = true;
 			else
 				info.silent = false;
+		} else if (line == "[ALERT]") {
+			getline(conf, line);
+			if (line == "true")
+				info.alert = true;
+			else
+				info.alert = false;
 		} else if (line == "[SEMESTER]") {
 			getline(conf, line);
 			if (line.length() == 0) //blank line because setting is optional, ignore
@@ -737,16 +755,23 @@ int main()
 				cout << "Silent mode enabled - suppressing messages while spotting." << endl;
 			else
 				cout << "Silent mode disabled - displaying messages while spotting." << endl;
+		} else if (cmd == "alert") {
+			info.alert = !info.alert;
+			if (info.alert)
+				cout << "Alert enabled - an alerting sound will play when a course is spotted." << endl;
+			else
+				cout << "Alert disabled - an alerting sound won't play." << endl;
 		} else if (cmd == "testSMS") {
 			testSMS();
 		} else {
 			cout << "\nList of commands:\n";
+			cout << "  alert               - enable/disable alert sound on course spot\n";
 			cout << "  exit                - close the program\n";
 			cout << "  info                - show spotter info\n";
 			cout << "  list                - list all courses being spotted\n";
 			cout << "  rm | remove         - remove a course being spotted\n";
 			cout << " rm <row>             - remove a course being spotted, where row is # from list\n";
-			cout << "  silent               - enable/disable messages while spotting\n";
+			cout << "  silent              - enable/disable messages while spotting\n";
 			cout << "  spot <###:###:##>   - add a course to spot\n";
 			cout << "  spot <### ### ##>   - add a course to spot\n";
 			cout << "  spot                - add a course to spot\n";

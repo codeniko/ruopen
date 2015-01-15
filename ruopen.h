@@ -1,5 +1,5 @@
-#ifndef _ruopen_h_
-#define _ruopen_h_
+#ifndef ruopen_h
+#define ruopen_h
 
 #include <stdlib.h>
 #include <iostream>
@@ -18,6 +18,35 @@
 
 using namespace std;
 
+struct Curl {
+	CURL *handle;
+	CURLcode res;
+	string response; //response
+	int respLen; //response length
+	string responseHeader; // response header
+	string cookiejar;
+	struct Headers {
+		struct curl_slist *json;
+		struct curl_slist *text;
+	} headers;
+};
+extern Curl curl;
+
+
+struct Info {
+	string semester;
+	string semesterString;
+	string campus;
+	string campusString;
+	string smsNumber;
+	string smsEmail;
+	string smsPassword;
+	string netid;
+	string netidPassword;
+	bool silent;
+	bool alert;
+};
+
 struct Department;
 struct Course;
 struct Section;
@@ -25,35 +54,74 @@ typedef list<Department> ListDepts;
 typedef list<Course> ListCourses;
 typedef list<Section> ListSections;
 
+struct Section {
+	string section;
+	string courseIndex;
+	int spotCounter; //usually starting at 300 and decrements every spot
 
+	// Assignment operator.
+	bool operator ==(const Section &other) {
+		return section == other.section && courseIndex == other.courseIndex;
+	}
+};
+
+struct Course {
+	string course;
+	string courseCode;
+	int json_index;
+	ListSections sections;
+
+	// Assignment operator.
+	bool operator ==(const Course &other) {
+		return course == other.course && courseCode == other.courseCode;
+	}
+};
+
+struct Department {
+	string dept;
+	string deptCode;
+	ListCourses courses;
+
+	// Assignment operator.
+	bool operator ==(const Department &other) {
+		return dept == other.dept && deptCode == other.deptCode;
+	}
+};
+
+
+bool addCourseToList(const string, const string, const string);
 void createConfFile();
-string createParams(string);
+string createParams(const string);
 void __attribute__ ((destructor)) dtor();
-Json::Value *getCourses(string &);
-string getCurrentSemester();
-bool getDepartments();
+Json::Value *getCoursesJSON(const string);
+string getCurrentSemester(); 
+bool getDepartmentsJSON();
 bool init();
-inline void printInfo();
-void printSpotting();
-void registerForCourse(Section *);
-bool removeCourse(int);
+inline void prinaProgramInfo();
+void printSpotList();
+void registerForCourse(const Section &);
+bool removeCourseFromList(int);
 bool setCampus(string);
-bool setSemester(string);
-void spot();
-bool spotCourse(string &, string &, string &);
-void spotted(Department *, Course *, Section *);
+bool setSemester(const string);
+void sleep(int, int, bool);
+void spawnAlert(const Department &, const Course &, const Section &);
 inline void testSMS();
+void thread_spot();
 int writeCallback(char *, size_t, size_t, string *);
 
 
 //utils.cpp
+
+//Used for Email libcurl
+struct upload_status {                                                    
+	int lines_read;
+};
+const string currentDateTime();
 extern list<string> providerEmails;
 extern char payload_text[][70];
-struct upload_status;
 size_t payload_source(void *, size_t, size_t, void *);
-string semesterCodeToString(string);
+string semesterCodeToString(const string);
 string semesterStringToCode(string);
-void debug(int);
 
 
 #endif

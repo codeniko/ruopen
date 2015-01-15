@@ -1,3 +1,5 @@
+#include "ruopen.h"
+
 list<string> providerEmails = { 
 	"@txt.att.net",//AT&T
 	"@vtext.com",//Verizon
@@ -13,9 +15,10 @@ list<string> providerEmails = {
 	"@message.alltel.com",//Alltel
 	"@sms.bluecell.com",//Bluegrass Cellular
 	"@cwemail.com",//Centennial
-	"@qwestmp.com",//Qwest
+	"@qwestmp.com"//Qwest
 };
 
+/* Email payload */
 char payload_text[][70] = {
 	"To: RUopen@ymail.com",
 	"Bcc: RUopen@ymail.com (RUopen)\r\n",
@@ -23,7 +26,12 @@ char payload_text[][70] = {
 	"\r\n"
 };
 
-string semesterCodeToString(string code)
+/* Given a semester code such as 12011, convert to its equivalent
+ * string, ex: Spring 2011
+ * PARAM code = semester code to convert
+ * RETURNS converted string or program terminates
+ */
+string semesterCodeToString(const string code)
 {
 	char c = code[0];
 	switch(c) {
@@ -37,12 +45,17 @@ string semesterCodeToString(string code)
 	}
 }
 
+/* Given a semester string like Spring 2011, convert to its 
+ * equivalent code, 12011
+ * PARAM str = semester string
+ * RETURNS semester code or "" on error
+ */
 string semesterStringToCode(string str)
 {
 	list<string> tokens;
 	boost::regex_split(std::back_inserter(tokens), str);
 	if (tokens.size() != 2)
-		return "NULL";
+		return "";
 	str = *tokens.begin();
 	transform(str.begin(), str.end(), str.begin(), ::tolower);
 	tokens.pop_front();
@@ -51,13 +64,8 @@ string semesterStringToCode(string str)
 	else if (str == "winter") return string("0") + year;
 	else if (str == "fall") return string("9") + year;
 	else if (str == "summer") return string("7") + year;
-	else return "NULL";
+	else return "";
 }
-
-//Used for Email libcurl
-struct upload_status {
-	int lines_read;
-};
 
 //Used for Email libcurl
 size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
@@ -82,13 +90,15 @@ size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 	return 0;
 }
 
-void debug(int id)
-{
-	ofstream file;
-	file.open("response"+to_string(id)+".html");
-	file << curl.response;
-	file.close();
-	cout << "Response code: " << curl.res << endl;
-	cout << "Response length: " << curl.respLen << endl;
-	cout << "Response header: \n" << curl.responseHeader << endl;
+// Get current date/time, format is YYYY-MM-DD.HH:mm:ss
+const string currentDateTime() {
+	time_t     now = time(0);
+	struct tm  tstruct;
+	char       buf[80];
+	tstruct = *localtime(&now);
+	// Visit http://en.cppreference.com/w/cpp/chrono/c/strftime
+	// for more information about date/time format
+	strftime(buf, sizeof(buf), "%Y-%m-%d.%X", &tstruct);
+
+	return buf;
 }

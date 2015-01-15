@@ -1,83 +1,23 @@
 #include "ruopen.h"
 
-struct Curl {
-	CURL *handle;
-	CURLcode res;
-	string response; //response
-	int respLen; //response length
-	string responseHeader; // response header
-	string cookiejar;
-	struct Headers {
-		struct curl_slist *json;
-		struct curl_slist *text;
-	} headers;
-};
-
-struct Info {
-	string semester;
-	string semesterString;
-	string campus;
-	string campusString;
-	string smsNumber;
-	string smsEmail;
-	string smsPassword;
-	string netid;
-	string netidPassword;
-	bool silent;
-	bool alert;
-};
-
-struct Section {
-	string section;
-	string courseIndex;
-	int spotCounter; //usually starting at 300 and decrements every spot
-
-	// Assignment operator.
-	bool operator ==(const Section &other) {
-		return section == other.section && courseIndex == other.courseIndex;
-	}
-};
-
-struct Course {
-	string course;
-	string courseCode;
-	int json_index;
-	ListSections sections;
-
-	// Assignment operator.
-	bool operator ==(const Course &other) {
-		return course == other.course && courseCode == other.courseCode;
-	}
-};
-
-struct Department {
-	string dept;
-	string deptCode;
-	ListCourses courses;
-
-	// Assignment operator.
-	bool operator ==(const Department &other) {
-		return dept == other.dept && deptCode == other.deptCode;
-	}
-};
-
 Curl curl;
 static Info info;
 static ListDepts spotting;
 static Json::Value dept_json;
 
 //Multithreading variables
-static boost::mutex mtx;
-static bool spotting_bool; //lets spot thread know when to terminate
+static bool flag_spot = false; //lets spot thread know when to terminate
 
-#include "utils.cpp"
 
-inline void printInfo() {
-	cout << "\nRUopen Version 1.0   -   Created by codeniko\n----------------------------------------" << endl;
+inline void printProgramInfo() {
+	cout << "\nRUopen Version 1.1   -   Created by codeniko\n----------------------------------------" << endl;
 	cout << "Semester: " << info.semesterString << endl << "Campus: " << info.campusString << endl;
 	cout << "SMS Email : " << info.smsEmail << endl << "SMS Phone Number: " << info.smsNumber << endl;
 }
 
+/* Initialize curl and some other info settings
+ * RETURNS true=>success, false=>failure
+ */
 bool init()
 {
 	curl.handle = NULL;
@@ -103,6 +43,7 @@ bool init()
 	curl_easy_setopt(curl.handle, CURLOPT_AUTOREFERER, 1);
 	curl_easy_setopt(curl.handle, CURLOPT_TIMEOUT_MS, 30000);
 	curl_easy_setopt(curl.handle, CURLOPT_CONNECTTIMEOUT, 30000);
+	curl_easy_setopt(curl.handle, CURLOPT_NOSIGNAL, 1); // multithread safe
 	//curl_easy_setopt(curl.handle, CURLOPT_VERBOSE, 1L);
 	// curl_easy_setopt(curl.handle, CURLOPT_CUSTOMREQUEST, "PUT");
 	//	curl_easy_setopt(curl.handle, CURLOPT_HEADER, 1); // A parameter set to 1 tells the library to include the header in the body output.
@@ -118,9 +59,14 @@ bool init()
 	info.silent = false;
 	info.alert = true;
 	setCampus("new brunswick");
-	return setSemester(getCurrentSemester());
+	const string semesterString = getCurrentSemester();
+	if (semesterString == "")
+		return false;
+	return setSemester(semesterString);
 }
 
+/* Used to receive curl response
+ */
 int writeCallback(char* buf, size_t size, size_t nmemb, string *in)
 { //callback must have this declaration
 	//buf is a pointer to the data that curl has for us
@@ -136,6 +82,22 @@ int writeCallback(char* buf, size_t size, size_t nmemb, string *in)
 	return 0; //tell curl how many bytes we handled
 }
 
+/* Sleep thread for n milliseconds
+ * PARAM sleeptime = milliseconds to sleep
+ * PARAM minSleep = minimum # milliseconds to sleep
+ * PARAM silent = bool if to print to stdout. false=>print, true=>not print
+ */
+void sleep(int sleeptime, int minSleep = 1000) {
+	if (sleeptime <= minSleep)
+		sleeptime = minSleep;
+	else
+		sleeptime = rand() % (sleeptime-minSleep) + minSleep;
+	boost::this_thread::sleep(boost::posix_time::milliseconds(sleeptime));
+}
+
+/* Get the Semester String, EX: Spring 2011
+ * Returns semester string or "" on error
+ */
 string getCurrentSemester()
 {
 	curl_easy_setopt(curl.handle, CURLOPT_HTTPHEADER, curl.headers.json);
@@ -143,47 +105,57 @@ string getCurrentSemester()
 	curl_easy_setopt(curl.handle, CURLOPT_REFERER, "http://sis.rutgers.edu/soc");
 	curl.res = curl_easy_perform(curl.handle);
 
-	if (curl.res != CURLE_OK)
-		return "NULL";
-	else {
+	if (curl.res != CURLE_OK) {
+		curl.response.clear();
+		return "";
+	} else {
 		Json::Value jsonroot;
 		Json::Reader jsonreader;
-		if (!jsonreader.parse(curl.response, jsonroot)) {
+		bool parseResult = jsonreader.parse(curl.response, jsonroot);
+		curl.response.clear();
+
+		if (!parseResult) {
 			cerr << "ERROR: Json parser errored on parsing semester information." << endl;
-			return "NULL";
+			return "";
 		}
 		int year = jsonroot.get("year", -1).asInt();
 		int term = jsonroot.get("term", -1).asInt();
 		if (year == -1 || term == -1) {
 			cerr << "ERROR: Wrong semester information retrieved." << endl;
-			return "NULL";
+			return "";
 		}
 
 		//If Summer or Winter, change to previous Spring or Fall
 		if (term == 0) { //Winter -> Fall
 			term = 9;
-			--year;
+			year--;
 		}
 		if (term == 7) //Summer -> Spring
 			term = 1;
 
 		stringstream ss;
 		ss << term << year; //rutgers semester code is just term + year
-		curl.response.clear();
 		return semesterCodeToString(ss.str());
 	}
 }
 
-string createParams(string dept = "NULL")
+/* Create URL parameters to retrieve RU courses/dept json
+ * PARAM dept = department code if looking up courses in dept, "" to get departments list
+ * RETURNS string containing URL parameter substring
+ */
+string createParams(const string dept = "")
 {
 	stringstream ss;
 	ss << "semester=" << info.semester << "&campus=" << info.campus << "&level=U,G";
-	if (dept != "NULL")
+	if (dept != "")
 		ss << "&subject=" << dept;
 	return ss.str();
 }
 
-bool getDepartments()
+/* Get departments
+ * RETURNS true=> success, false=>failure
+ */
+bool getDepartmentsJSON()
 {
 	static bool alreadyRetrieved = false;
 	if (alreadyRetrieved) //prevent retrieving departments multiple times
@@ -196,12 +168,14 @@ bool getDepartments()
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
 		cerr << "ERROR: Unable to retrieve Rutgers department data (1)." << endl;
+		curl.response.clear();
 		return false;
 	}
 
 	Json::Reader jsonreader;
 	if (!jsonreader.parse(curl.response, dept_json) || dept_json.size() == 0) {
 		cerr << "ERROR: Unable to retrieve Rutgers department data (2)." << endl;
+		curl.response.clear();
 		return false;
 	}
 
@@ -210,7 +184,11 @@ bool getDepartments()
 	return true;
 }
 
-Json::Value *getCourses(string &deptcode)
+/* Get Courses JSON object
+ * PARAM deptcode = department code for specific courses mapped to a dept
+ * RETURNS JSON object or NULL on error
+ */
+Json::Value *getCoursesJSON(const string deptcode)
 {
 	string params = createParams(deptcode);
 	curl_easy_setopt(curl.handle, CURLOPT_HTTPHEADER, curl.headers.json);
@@ -219,13 +197,15 @@ Json::Value *getCourses(string &deptcode)
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
 		cerr << "ERROR: Unable to retrieve Rutgers course data (1)." << endl;
+		curl.response.clear();
 		return NULL;
 	}
-
+	
 	Json::Value *courses = new Json::Value();
 	Json::Reader jsonreader;
 	if (!jsonreader.parse(curl.response, *courses) || courses->size() == 0) {
 		cerr << "ERROR: Unable to retrieve Rutgers course data (2)." << endl;
+		curl.response.clear();
 		return NULL;
 	}
 
@@ -233,17 +213,25 @@ Json::Value *getCourses(string &deptcode)
 	return courses;
 }
 
-bool setSemester(string semesterString)
+/* Set the semester and semester code in settings
+ * PARAM semesterString = Current semester, EX: Spring 2011
+ * RETURNS true=>success, false=>failure
+ */
+bool setSemester(const string semesterString)
 {
 	string code;
-	if (semesterString == "NULL" || (code = semesterStringToCode(semesterString)) == "NULL")
+	if (semesterString == "" || (code = semesterStringToCode(semesterString)) == "")
 		return false;
 
 	info.semester = code;
-	info.semesterString = semesterCodeToString(code);
+	info.semesterString = semesterCodeToString(code); //Getting string again incase semester string in config file is not proper
 	return true;
 }
 
+/* Set campus info in settings
+ * PARAM campus = campus string in config
+ * RETURNS true=>success, false=>failure
+ */
 bool setCampus(string campus)
 {
 	transform(campus.begin(), campus.end(), campus.begin(), ::tolower);
@@ -261,7 +249,11 @@ bool setCampus(string campus)
 	return true;
 }
 
-bool removeCourse(int row)
+/* Remove course that is being spotted
+ * PARAM row = index of course being removed in spotlist
+ * RETURNS true=>success, false=>failure
+ */
+bool removeCourseFromList(int row)
 {
 	int count = 0;
 	for (ListDepts::iterator dept = spotting.begin(); dept != spotting.end(); ++dept) {
@@ -285,34 +277,38 @@ bool removeCourse(int row)
 	return false;
 }
 
-//Add a course to spot
-bool spotCourse(string &deptcode, string &coursecode, string &sectioncode)
+/* Add a course to spotlist
+ * PARAM deptcode = department code of course
+ * PARAM coursecode = course code of course
+ * PARAM sectioncode = section of course
+ * RETURNS true=>success, false=>failure
+ */
+bool addCourseToList(const string deptcode, const string coursecode, const string sectioncode)
 {
-	if (!getDepartments())
+	if (!getDepartmentsJSON())
 		return false;
 
 	//Validate Department Input
-	Json::ValueIterator it, it2, it3;
-	for (it = dept_json.begin(); it != dept_json.end(); ++it) {
-		if ((*it).get("code", "NULL").asString() == deptcode)
+	unsigned int c;
+	for (c = 0; c < dept_json.size(); ++c) {
+		if (dept_json[c].get("code", "NULL").asString() == deptcode)
 			break;
 	}
-	if (it == dept_json.end())
+	if (c == dept_json.size())
 		return false;
 	Department dept;
-	dept.dept = (*it).get("description", "NULL").asString();
+	dept.dept = dept_json[c].get("description", "NULL").asString();
 	dept.deptCode = deptcode;
 
 	//Validate Course Input
-	Json::Value *course_json = getCourses(dept.deptCode);
+	Json::Value *course_json = getCoursesJSON(dept.deptCode);
 	if (course_json == NULL)
 		return false;
-	unsigned int c;
-	for (c = 0; c < (*course_json).size(); ++c) {
+	for (c = 0; c < course_json->size(); ++c) {
 		if ((*course_json)[c].get("courseNumber", "NULL").asString() == coursecode)
 			break;
 	}
-	if (c == (*course_json).size()) {
+	if (c == course_json->size()) {
 		delete course_json;
 		return false;
 	}
@@ -343,6 +339,7 @@ bool spotCourse(string &deptcode, string &coursecode, string &sectioncode)
 	dept.courses.push_back(course);
 
 	//check if we are already spotting this department and insert if we are not
+	Json::ValueIterator it, it2, it3;
 	ListDepts::iterator spotting_dept;
 	ListCourses::iterator spotting_course;
 	ListSections::iterator spotting_section;
@@ -380,6 +377,8 @@ bool spotCourse(string &deptcode, string &coursecode, string &sectioncode)
 	return true;
 }
 
+/* Create configuration file if it does not exist
+ */
 void createConfFile()
 {
 	ofstream conf;
@@ -392,7 +391,9 @@ void createConfFile()
 	conf.close();
 }
 
-void printSpotting()
+/* Print current spotlist
+ */
+void printSpotList()
 {
 	int count = 0;
 	cout << endl << "Currently spotting:" << endl;
@@ -408,65 +409,83 @@ void printSpotting()
 		cout << "  Not spotting any courses..." << endl;
 }
 
-void registerForCourse(Section *section)
+/* Register for course through webreg if a course is spotted
+ * PARAM section = section object of the course to register for (contains course index used by webreg)
+ */
+void registerForCourse(const Section &section)
 {
+	//get initial login page html contents
 	curl_easy_setopt(curl.handle, CURLOPT_HTTPHEADER, curl.headers.text);
 	curl_easy_setopt(curl.handle, CURLOPT_REFERER, "https://sims.rutgers.edu/webreg/chooseSemester.htm?login=cas"); //default
 	curl_easy_setopt(curl.handle, CURLOPT_URL, "https://cas.rutgers.edu/login?service=https%3A%2F%2Fsims.rutgers.edu%2Fwebreg%2Fj_acegi_cas_security_check");
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
-		cerr << "ERROR: Unable to login into webreg 1." << endl;
+		cerr << "ERROR: webreg step 1." << endl;
 		curl.response.clear();
 		return;
 	}
-	debug(1);
 
-	boost::cmatch what; // what[1]=dept, what[2]=course, what[3]=section
-	boost::regex re("input type=\"hidden\" name=\"lt\" value=\"_cNoOpConversation (.+?)\"");
-	if (!boost::regex_search(curl.response.c_str(), what, re)) {
-		cerr << "ERROR: Unable to login into webreg 2." << endl;
+	//Check if logged into webreg already.
+	boost::cmatch what;
+	boost::regex loginRe("a href=\"logout.htm\">Log Out<");
+	if (!boost::regex_search(curl.response.c_str(), what, loginRe)) {
+		cout << "Attempting to login into webreg." << endl;
+
+		//parse login page for login token
+		boost::regex re("input type=\"hidden\" name=\"lt\" value=\"_cNoOpConversation (.+?)\"");
+		if (!boost::regex_search(curl.response.c_str(), what, re)) {
+			cerr << "ERROR: Unable to get login token in webreg step 2." << endl;
+			curl.response.clear();
+			return;
+		}
+		string lt(what[1].first, what[1].second);
 		curl.response.clear();
-		return;
+
+		//pass in login info and token to attempt a login
+		string postfields = "username="+info.netid+"&password="+info.netidPassword+"&authenticationType=Kerberos&lt=_cNoOpConversation " + lt + "&_currentStateId=&_eventId=submit";
+		curl_easy_setopt(curl.handle, CURLOPT_URL, "https://cas.rutgers.edu/login?service=https%3A%2F%2Fsims.rutgers.edu%2Fwebreg%2Fj_acegi_cas_security_check");
+		curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, postfields.c_str());
+		curl.res = curl_easy_perform(curl.handle);
+		if (curl.res != CURLE_OK) {
+			cerr << "ERROR: Unable to login into webreg step 3." << endl;
+			curl.response.clear();
+			return;
+		}
+
+		//check if login was a success, otherwise return on error
+		if (!boost::regex_search(curl.response.c_str(), what, loginRe)) {
+			cerr << "Error: Failed to login into webreg. Are the credentials correct?" << endl;
+			curl.response.clear();
+			return;
+		}
+		cout << "Logged in successfully!" << endl;
 	}
-	string lt(what[1].first, what[1].second);
 	curl.response.clear();
 
-	string postfields = "username="+info.netid+"&password="+info.netidPassword+"&authenticationType=Kerberos&lt=_cNoOpConversation " + lt + "&_currentStateId=&_eventId=submit";
-	curl_easy_setopt(curl.handle, CURLOPT_URL, "https://cas.rutgers.edu/login?service=https%3A%2F%2Fsims.rutgers.edu%2Fwebreg%2Fj_acegi_cas_security_check");
-	curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, postfields.c_str());
-	curl.res = curl_easy_perform(curl.handle);
-	if (curl.res != CURLE_OK) {
-		cerr << "ERROR: Unable to login into webreg 3." << endl;
-		curl.response.clear();
-		return;
-	}
-	debug(2);
-	curl.response.clear();
-
-	postfields = "semesterSelection="+info.semester+"&submit=Continue+&#8594";
+	//Assuming success to lo(need to change), select semester
+	string postfields = "semesterSelection="+info.semester+"&submit=Continue+&#8594";
 	curl_easy_setopt(curl.handle, CURLOPT_REFERER, "https://sims.rutgers.edu/webreg/chooseSemester.htm"); //default
 	curl_easy_setopt(curl.handle, CURLOPT_URL, "https://sims.rutgers.edu/webreg/editSchedule.htm");
 	curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, postfields.c_str());
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
-		cerr << "ERROR: Unable to login into webreg 4." << endl;
+		cerr << "ERROR: Unable to select semester in webreg step 4." << endl;
 		curl.response.clear();
 		return;
 	}
-	debug(3);
 	curl.response.clear();
 
-	postfields = "coursesToAdd[0].courseIndex="+section->courseIndex+"&coursesToAdd[1].courseIndex=&coursesToAdd[2].courseIndex=&coursesToAdd[3].courseIndex=&coursesToAdd[4].courseIndex=&coursesToAdd[5].courseIndex=&coursesToAdd[6].courseIndex=&coursesToAdd[7].courseIndex=&coursesToAdd[8].courseIndex=&coursesToAdd[9].courseIndex=";
+	//Send registration request with the the specified section courseIndex passed in
+	postfields = "coursesToAdd[0].courseIndex="+section.courseIndex+"&coursesToAdd[1].courseIndex=&coursesToAdd[2].courseIndex=&coursesToAdd[3].courseIndex=&coursesToAdd[4].courseIndex=&coursesToAdd[5].courseIndex=&coursesToAdd[6].courseIndex=&coursesToAdd[7].courseIndex=&coursesToAdd[8].courseIndex=&coursesToAdd[9].courseIndex=";
 	curl_easy_setopt(curl.handle, CURLOPT_URL, "https://sims.rutgers.edu/webreg/addCourses.htm");
 	curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, postfields.c_str());
 	curl.res = curl_easy_perform(curl.handle);
 	if (curl.res != CURLE_OK) {
-		cerr << "ERROR: Unable to login into webreg 5." << endl;
+		cerr << "ERROR: Unable to send registration request step 5." << endl;
 		curl.response.clear();
 		return;
 	}
 	
-	debug(4);
 	curl.response.clear();
 	curl_easy_setopt(curl.handle, CURLOPT_HTTPHEADER, curl.headers.json);
 	curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDS, NULL);
@@ -476,25 +495,30 @@ void registerForCourse(Section *section)
 	cout << "Registration request sent!" << endl;
 }
 
+/* Send a test SMS message
+ */
 inline void testSMS() {
 	Department dept;
 	Course course;
 	Section section;
 	dept.dept = "TESTSMS";
 	cout << "Sending a test message to " << info.smsNumber << " from " << info.smsEmail << "." << endl;
-	spotted(&dept, &course, &section);
+	spawnAlert(dept, course, section);
 }
 
-//A course has been spotted! Alert the user by playing a sound file and sending an SMS
-void spotted(Department *dept, Course *course, Section *section)
+/* Course has been spotted! Alert the user by playing a sound file and send an SMS
+ * PARAM dept = department object of course
+ * PARAM course = course object of course
+ * PARAM section = section object of course
+ */
+void spawnAlert(const Department &dept, const Course &course, const Section &section)
 {
 	string whatspotted = "This is a test message from RUopen.";
-	if (dept->dept != "TESTSMS") {
-		section->spotCounter = 200;
-		whatspotted = "["+section->courseIndex+"] "+dept->deptCode+":"+course->courseCode+":"+section->section+" "+course->course+" has been spotted!\r\n";
+	if (dept.dept != "TESTSMS") {
+		whatspotted = "["+section.courseIndex+"] "+dept.deptCode+":"+course.courseCode+":"+section.section+" "+course.course+" has been spotted!\r\n";
 		cout << whatspotted << flush;
 		if (info.alert)
-			system("mpg321 -q alert.mp3");
+			system("mpg321 -q alert.mp3 &");
 	}
 	CURL *curl;
 	CURLcode res = CURLE_OK;
@@ -525,49 +549,56 @@ void spotted(Department *dept, Course *course, Section *section)
 		curl_slist_free_all(recipients);
 		curl_easy_cleanup(curl);
 	}
-
-	if (dept->dept != "TESTSMS")
-		registerForCourse(section);
 }
 
+
 //main spotting thread
-void spot()
+void thread_spot()
 {
-	cout << "Spotter started!" << endl;
+	int sleeptime = 3000;
+	cout << endl << endl << "Spotter started!" << endl;
 	if (info.silent)
 		cout << "Silent mode is enabled - suppressing messages while spotting." << endl;
 	while (1) {
 		//should thread die?
-		mtx.lock();
-		if (!spotting_bool){
-			mtx.unlock();
+		if (!flag_spot){
 			return;
 		}
-		mtx.unlock();
 
-		int sleeptime = rand() % 3000 + 1001;
+		//Go through each of the departments we are spotting
 		for (ListDepts::iterator dept = spotting.begin(); dept != spotting.end(); ++dept) {
-			Json::Value *course_json = getCourses(dept->deptCode);
+			Json::Value *course_json = getCoursesJSON(dept->deptCode);
 			while (course_json == NULL) {
-				sleeptime = rand() % 3000 + 1001;
 				if (!info.silent)
-					cout << "Unable to retrieve courses, trying again in " << sleeptime+5000 << "ms." << endl;
-				boost::this_thread::sleep(boost::posix_time::milliseconds(sleeptime+5000));
-				course_json = getCourses(dept->deptCode);
+					cout << "Unable to retrieve courses, trying again after sleeping." << endl;
+
+				sleep(sleeptime+5000, 5000);
+				course_json = getCoursesJSON(dept->deptCode);
 			} 
+
+			//Go through each course we are spotting
 			for (ListCourses::iterator course = dept->courses.begin(); course != dept->courses.end(); ++course) {
+				//get sections JSON from current course JSON
 				Json::Value section_json = (*course_json)[course->json_index]["sections"];
+				//Go through each section of the course we are spotting
 				for (ListSections::iterator section = course->sections.begin(); section != course->sections.end(); ++section) {
+					//iterate through all sections in JSON until our section is found
 					for (unsigned int s = 0; s < section_json.size(); ++s) {
 						if (section_json[s].get("number", "NULL").asString() == section->section) {
 							if (!info.silent)
 								cout << "Checking "<<'[' << section->courseIndex << "] " << dept->deptCode << ":" << course->courseCode << ":" << section->section << ' ' << course->course << ".......";
-							if (section_json[s].get("openStatus", false).asBool() == true && section->spotCounter <= 0) {
-								cout << "OPEN!" << endl;
-								boost::thread threadspotted(spotted, &(*dept), &(*course), &(*section));
+							if (section_json[s].get("openStatus", false).asBool() == true) {
+								if (section->spotCounter <= 0) {
+									cout << "\e[01;37;42mOPEN!\e[0m" << endl;
+									section->spotCounter = 200;
+									boost::thread threadspotted(spawnAlert, *dept, *course, *section);
+									if (dept->dept != "TESTSMS")
+										registerForCourse(*section);
+								} else 
+									cout << "\e[01;37;42mOPEN! (waiting " << section->spotCounter << " cycles)\e[0m" << endl;
 							} else
 								if (!info.silent)
-									cout << "closed." << endl;;
+									cout << "\e[0;37;41mclosed\e[0m." << endl;
 						}
 					}
 					--section->spotCounter;
@@ -575,9 +606,7 @@ void spot()
 			}
 			delete course_json;
 		}
-		if (!info.silent)
-			cout << "Sleeping for " << sleeptime << "ms." << endl;
-		boost::this_thread::sleep(boost::posix_time::milliseconds(sleeptime));
+		sleep(3000);
 	}
 }
 
@@ -599,7 +628,7 @@ int main()
 	int linecount = 0;
 	while (getline(conf, line)) {
 		if (line == "[COURSES]") {
-			printInfo();
+			printProgramInfo();
 			cout << "Validating course information from Rutgers...." << flush;
 			while (getline(conf, line)) {
 				if (line.length() == 0) //blank line, end course list
@@ -616,7 +645,7 @@ int main()
 				string section(what[3].first, what[3].second);
 				if (section.length() == 1)
 					section.insert(0, "0");
-				if (!spotCourse(dept, course, section))
+				if (!addCourseToList(dept, course, section))
 					cerr << "ERROR: Unable to retrieve Rutgers data or " <<dept<<':'<<course<<':'<<section<< " is invalid." << endl;
 			}
 			cout << "OKAY!" << endl;
@@ -672,30 +701,30 @@ int main()
 	}
 	conf.close();
 
-	printSpotting();
+	printSpotList();
 
 	do {
 		cout << endl << "Enter a command: ";
 		string cmd;
 		getline(cin, cmd);
 		if (cmd == "list")
-			printSpotting();
+			printSpotList();
 		else if (cmd == "start") {
-			if (spotting_bool) {
+			if (flag_spot) {
 				cout << "Program is already spotting for courses!" << endl;
 			} else {
-				spotting_bool = true;
-				boost::thread thread1(spot);
+				flag_spot = true;
+				boost::thread thread1(thread_spot);
 			}
 		} else if (cmd == "stop") {
 			cout << "Stopping the spotter....";
-			mtx.lock();
-			spotting_bool = false;
-			mtx.unlock();
+			//mtx.lock();
+			flag_spot = false;
+			//mtx.unlock();
 		} else if (cmd == "exit") {
 			return 0;
-		} else if (cmd == "spot") {
-			string dept, course, section;
+		} else if (cmd == "add") {
+			string dept="", course="", section="";
 			cout << "Enter Department Number: ";
 			getline(cin, dept);
 			cout << "Enter Course Number: ";
@@ -704,13 +733,13 @@ int main()
 			getline(cin, section);
 			if (section.length() == 1)
 				section.insert(0, "0");
-			if (spotCourse(dept, course, section))
+			if (addCourseToList(dept, course, section))
 				cout << dept<<':'<<course<<':'<<section<< " is now being spotted." << endl;
 			else
 				cerr << "ERROR: Unable to retrieve Rutgers data or " <<dept<<':'<<course<<':'<<section<< " is invalid." << endl;
-		} else if (cmd.substr(0, 5) == "spot ") {
+		} else if (cmd.substr(0, 4) == "add ") {
 			boost::cmatch what; // what[1]=dept, what[2]=course, what[3]=section
-			boost::regex re("^spot\\s+([0-9]{3})[\\s:]+([0-9]{3})[\\s:]+([0-9]{1,2})\\s*$");
+			boost::regex re("^add\\s+([0-9]{3})[\\s:]+([0-9]{3})[\\s:]+([0-9]{1,2})\\s*$");
 			if (!boost::regex_match(cmd.c_str(), what, re)) {
 				cout << "Error: Invalid syntax\n\tExample:\t198:111:01 or 198 111 01 where 198 is department, 111 is course, and 01 is section." << endl;
 				continue;
@@ -720,7 +749,7 @@ int main()
 			string section(what[3].first, what[3].second);
 			if (section.length() == 1)
 				section.insert(0, "0");
-			if (spotCourse(dept, course, section))
+			if (addCourseToList(dept, course, section))
 				cout << dept<<':'<<course<<':'<<section<< " is now being spotted." << endl;
 			else
 				cerr << "ERROR: Unable to retrieve Rutgers data or " <<dept<<':'<<course<<':'<<section<< " is invalid." << endl;
@@ -729,7 +758,7 @@ int main()
 			boost::regex reWithKeyword("^\\s*(?:rm|remove)\\s+([0-9]+)\\s*$");
 			boost::cmatch what; // what[1]=dept, what[2]=course, what[3]=section
 			if (cmd == "rm" || cmd == "remove") {
-				printSpotting();
+				printSpotList();
 				cout << "Enter the row # containing the course to remove: ";
 				getline(cin, cmd);
 				if (!boost::regex_match(cmd.c_str(), what, reNumOnly)) {
@@ -743,12 +772,12 @@ int main()
 				}
 			}
 			string row(what[1].first, what[1].second);
-			if (removeCourse(atoi(row.c_str())))
+			if (removeCourseFromList(atoi(row.c_str())))
 				cout << "Removed course successfully!" << endl;
 			else
 				cerr << "ERROR: Course not removed due to invalid row specified." << endl;
 		} else if (cmd == "info") {
-			printInfo();
+			printProgramInfo();
 		} else if (cmd == "silent") {
 			info.silent = !info.silent;
 			if (info.silent)
@@ -770,11 +799,11 @@ int main()
 			cout << "  info                - show spotter info\n";
 			cout << "  list                - list all courses being spotted\n";
 			cout << "  rm | remove         - remove a course being spotted\n";
-			cout << " rm <row>             - remove a course being spotted, where row is # from list\n";
+			cout << "  rm <row>            - remove a course being spotted, where row is # from list\n";
 			cout << "  silent              - enable/disable messages while spotting\n";
-			cout << "  spot <###:###:##>   - add a course to spot\n";
-			cout << "  spot <### ### ##>   - add a course to spot\n";
-			cout << "  spot                - add a course to spot\n";
+			cout << "  add <###:###:##>    - add a course to spot\n";
+			cout << "  add <### ### ##>    - add a course to spot\n";
+			cout << "  add                 - add a course to spot\n";
 			cout << "  start               - start the spotter\n";
 			cout << "  stop                - stop the spotter\n";
 			cout << "  testSMS             - send a test SMS message to your phone\n";

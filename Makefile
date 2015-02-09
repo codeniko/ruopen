@@ -1,6 +1,6 @@
 PROGRAM=ruopen
 CC=g++
-CXXFLAGS_DEBUG=-std=c++11 -Wall -Wextra -g -Og
+CXXFLAGS_DEBUG=-std=c++11 -Wall -Wextra -g
 CXXFLAGS=-std=c++11 -s -O2 -flto -march=native
 LDFLAGS=-lcurl -lboost_regex -lboost_thread -lboost_system -ljsoncpp
 

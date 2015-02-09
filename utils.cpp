@@ -1,21 +1,21 @@
 #include "ruopen.h"
 
 list<string> providerEmails = { 
-	"@txt.att.net",//AT&T
-	"@vtext.com",//Verizon
-	"@tmomail.net",//T-Mobile
-	"@messaging.sprintpcs.com",//Sprint PCS
-	"@messaging.nextel.com",//Sprint Nextel
-	"@vmobl.com",//Virgin Mobile USA
-	"@email.uscc.net",//US Cellular
-	"@mymetropcs.com",//MetroPCS
-	"@mobile.celloneusa.com",//Cellular One
-	"@myhelio.com",//Helio
-	"@myboostmobile.com",//Boost Mobile
-	"@message.alltel.com",//Alltel
-	"@sms.bluecell.com",//Bluegrass Cellular
-	"@cwemail.com",//Centennial
-	"@qwestmp.com"//Qwest
+	"@txt.att.net",/*AT&T*/
+	"@vtext.com",/*Verizon*/
+	"@tmomail.net",/*T-Mobile*/
+	"@messaging.sprintpcs.com",/*Sprint PCS*/
+	"@messaging.nextel.com",/*Sprint Nextel*/
+	"@vmobl.com",/*Virgin Mobile USA*/
+	"@email.uscc.net",/*US Cellular*/
+	"@mymetropcs.com",/*MetroPCS*/
+	"@mobile.celloneusa.com",/*Cellular One*/
+	"@myhelio.com",/*Helio*/
+	"@myboostmobile.com",/*Boost Mobile*/
+	"@message.alltel.com",/*Alltel*/
+	"@sms.bluecell.com",/*Bluegrass Cellular*/
+	"@cwemail.com",/*Centennial*/
+	"@qwestmp.com"/*Qwest*/
 };
 
 /* Email payload */
@@ -67,7 +67,7 @@ string semesterStringToCode(string str)
 	else return "";
 }
 
-//Used for Email libcurl
+/*Used for Email libcurl*/
 size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 {
 	upload_status *upload_ctx = (upload_status *)userp;
@@ -90,14 +90,14 @@ size_t payload_source(void *ptr, size_t size, size_t nmemb, void *userp)
 	return 0;
 }
 
-// Get current date/time, format is YYYY-MM-DD.HH:mm:ss
+/* Get current date/time, format is YYYY-MM-DD.HH:mm:ss*/
 const string currentDateTime() {
 	time_t     now = time(0);
 	struct tm  tstruct;
 	char       buf[80];
 	tstruct = *localtime(&now);
-	// Visit http://en.cppreference.com/w/cpp/chrono/c/strftime
-	// for more information about date/time format
+	/* Visit http://en.cppreference.com/w/cpp/chrono/c/strftime*/
+	/* for more information about date/time format*/
 	strftime(buf, sizeof(buf), "%Y-%m-%d.%X", &tstruct);
 
 	return buf;

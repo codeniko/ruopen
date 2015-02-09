@@ -1,0 +1,36 @@
+[CAMPUS]
+New Brunswick
+
+[SEMESTER]
+
+[ENABLE AUTO REGISTER]
+true
+
+[NETID]
+mlk34
+
+[NETID PASSWORD]
+mysecretpass
+
+[ENABLE SMS]
+true
+
+[SMS EMAIL]
+ruopen@yahoo.com
+
+[SMS PASSWORD]
+myemailpass
+
+[SMS PHONE NUMBER]
+7326052413
+
+[SILENTMESSAGES]
+true
+
+[ALERT]
+false
+
+[COURSES]
+547:320:04
+198:111:03
+198:419:01

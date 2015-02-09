@@ -58,6 +58,8 @@ bool init()
 	// curl_easy_setopt(curl.handle, CURLOPT_POSTFIELDSIZE, jsonput.length());
 	info.silent = false;
 	info.alert = true;
+	info.enableWebreg = false;
+	info.enableSMS = true;
 	setCampus("new brunswick");
 	const string semesterString = getCurrentSemester();
 	if (semesterString == "")
@@ -384,8 +386,8 @@ void createConfFile()
 	ofstream conf;
 	conf.open(CONFFILE);
 	conf <<	"[CAMPUS]\nNew Brunswick\n\n[SEMESTER]\n\n" <<
-		"[NETID]\n\n[NETID PASSWORD]\n\n" <<
-		"[SMS EMAIL]\nexample@yahoo.com\n\n[SMS PASSWORD]\nPasswordForEmailGoesHere\n\n" <<
+		"[ENABLE AUTO REGISTER]\nfalse\n\n[NETID]\nEnter Netid Here\n\n[NETID PASSWORD]\nEnter Password Here\n\n" <<
+		"[ENABLE SMS]\ntrue\n\n[SMS EMAIL]\nexample@yahoo.com\n\n[SMS PASSWORD]\nPassword For Email Goes Here\n\n" <<
 		"[SMS PHONE NUMBER]\n1234567890\n\n[SILENTMESSAGES]\nfalse\n\n[ALERT]\ntrue\n\n[COURSES]\n\n";
 
 	conf.close();
@@ -520,6 +522,10 @@ void spawnAlert(const Department &dept, const Course &course, const Section &sec
 		if (info.alert)
 			system("mpg321 -q alert.mp3 &");
 	}
+
+	if (!info.enableSMS)
+		return;
+
 	CURL *curl;
 	CURLcode res = CURLE_OK;
 	curl_slist *recipients = NULL;
@@ -592,7 +598,7 @@ void thread_spot()
 									cout << "\e[01;37;42mOPEN!\e[0m" << endl;
 									section->spotCounter = 200;
 									boost::thread threadspotted(spawnAlert, *dept, *course, *section);
-									if (dept->dept != "TESTSMS")
+									if (info.enableWebreg && dept->dept != "TESTSMS")
 										registerForCourse(*section);
 								} else 
 									cout << "\e[01;37;42mOPEN! (waiting " << section->spotCounter << " cycles)\e[0m" << endl;
@@ -670,6 +676,18 @@ int main()
 				info.alert = true;
 			else
 				info.alert = false;
+		} else if (line == "[ENABLE AUTO REGISTER]") {
+			getline(conf, line);
+			if (line == "true")
+				info.enableWebreg = true;
+			else
+				info.enableWebreg = false;
+		} else if (line == "[ENABLE SMS]") {
+			getline(conf, line);
+			if (line == "true")
+				info.enableSMS = true;
+			else
+				info.enableSMS = false;
 		} else if (line == "[SEMESTER]") {
 			getline(conf, line);
 			if (line.length() == 0) //blank line because setting is optional, ignore
@@ -787,9 +805,9 @@ int main()
 		} else if (cmd == "alert") {
 			info.alert = !info.alert;
 			if (info.alert)
-				cout << "Alert enabled - an alerting sound will play when a course is spotted." << endl;
+				cout << "Alert enabled - an alerting sound will play and an SMS text message will be sent when a course is spotted." << endl;
 			else
-				cout << "Alert disabled - an alerting sound won't play." << endl;
+				cout << "Alert disabled - an alerting sound won't play and there will be no text message sent." << endl;
 		} else if (cmd == "testSMS") {
 			testSMS();
 		} else {

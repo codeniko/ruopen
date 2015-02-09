@@ -11,7 +11,6 @@
 #include <boost/regex.hpp>
 #include <list>
 #include <algorithm>
-#include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 
 #define CONFFILE "ruopen.conf"
@@ -21,9 +20,9 @@ using namespace std;
 struct Curl {
 	CURL *handle;
 	CURLcode res;
-	string response; //response
-	int respLen; //response length
-	string responseHeader; // response header
+	string response; /*response*/
+	int respLen; /*response length*/
+	string responseHeader; /*response header*/
 	string cookiejar;
 	struct Headers {
 		struct curl_slist *json;
@@ -43,6 +42,8 @@ struct Info {
 	string smsPassword;
 	string netid;
 	string netidPassword;
+	bool enableWebreg;
+	bool enableSMS;
 	bool silent;
 	bool alert;
 };
@@ -57,9 +58,9 @@ typedef list<Section> ListSections;
 struct Section {
 	string section;
 	string courseIndex;
-	int spotCounter; //usually starting at 300 and decrements every spot
+	int spotCounter; /*usually starting at 300 and decrements every spot*/
 
-	// Assignment operator.
+	/* Assignment operator*/
 	bool operator ==(const Section &other) {
 		return section == other.section && courseIndex == other.courseIndex;
 	}
@@ -71,7 +72,7 @@ struct Course {
 	int json_index;
 	ListSections sections;
 
-	// Assignment operator.
+	/* Assignment operator*/
 	bool operator ==(const Course &other) {
 		return course == other.course && courseCode == other.courseCode;
 	}
@@ -82,7 +83,7 @@ struct Department {
 	string deptCode;
 	ListCourses courses;
 
-	// Assignment operator.
+	/* Assignment operator*/
 	bool operator ==(const Department &other) {
 		return dept == other.dept && deptCode == other.deptCode;
 	}
@@ -110,9 +111,9 @@ void thread_spot();
 int writeCallback(char *, size_t, size_t, string *);
 
 
-//utils.cpp
+/*utils.cpp*/
 
-//Used for Email libcurl
+/*Used for Email libcurl*/
 struct upload_status {                                                    
 	int lines_read;
 };

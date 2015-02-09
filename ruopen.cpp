@@ -805,9 +805,9 @@ int main()
 		} else if (cmd == "alert") {
 			info.alert = !info.alert;
 			if (info.alert)
-				cout << "Alert enabled - an alerting sound will play and an SMS text message will be sent when a course is spotted." << endl;
+				cout << "Alert enabled - an alerting sound will play when a course is spotted." << endl;
 			else
-				cout << "Alert disabled - an alerting sound won't play and there will be no text message sent." << endl;
+				cout << "Alert disabled - an alerting sound won't play." << endl;
 		} else if (cmd == "testSMS") {
 			testSMS();
 		} else {

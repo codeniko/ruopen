@@ -1,25 +1,27 @@
 #RUopen? - Rutgers Course Spotter
-Is the course you need to graduate closed? Or maybe you want that Easy A class that is always closed. RUopen has got you covered! RUopen spots when the section of a course you want opens, automatically logs into webreg and registers you, and then notifies you of its success through a text message. 
+Is the course you need to graduate closed? Or maybe you want that Easy A class that is always closed. RUopen has got you covered! RUopen spots when the section of a course you want opens, automatically logs into webreg and registers you, and then notifies you of its success through a text message. Register for that course within mere seconds of it opening!
 
 *DISCLAIMER: I, Nikolay Feldman, do not take any responsibility and cannot be held liable for your use of this software. This software was created for an experimental purpose only to prove that it can be done. While it works as intended, I do not approve of its use. Rutgers policy does not allow the use of an automated system to register for courses. Use this at your own risk.*
 
 
 ##Installation
 **Dependencies**<br>
-The versions specified below are the versions in which RUopen was developed.<br>
+The versions specified below are the versions in which RUopen was developed. Developed on Debian 6 and tested on Debian 7<br>
 gcc >= *4.7.2*<br>
 LibCurl (libcurl4-openssl-dev)  >= *7.26.0*<br>
 Boost (libboost-dev) >= *1.49.0*<br>
 Boost (libboost-regex-dev) >= *1.49.0*<br>
 Boost (libboost-thread-dev) >= *1.49.0*<br>
-JsonCpp (libjsoncpp-dev) >= *0.6.0~rc2-3*
+Boost (libboost-system-dev) >= *1.49.0*<br>
+JsonCpp (libjsoncpp-dev) >= *0.6.0~rc2-3*<br>
+mpg321...... *optional*
 
 To build, simply run
 > make
 
 An executable binary file named **ruopen** will be built.
 ##Configuration
-The configuration file is **ruopen.conf**
+The configuration file is **ruopen.conf**. An example configuration file is provided.
 
 **NOTE** 
 If you're not using a setting or want the program to default, leave the value of the setting as an empty line. You can also remove the setting entirely.
@@ -39,6 +41,13 @@ The school semester that you want to load courses for. This can be left blank an
  Default: <i>&lt;EMPTY LINE&gt; signifying to use current semester (determined automatically).</i>
 </pre>
 
+Enable/Disable automatic registration through Webreg. If enabled, the next two configuration settings must be set, *NETID* and *NETID PASSWORD*.
+<pre>
+ [ENABLE AUTO REGISTER] 
+ Values: <i>true, false</i>
+ Default: <i>false</i>
+</pre>
+
 Your Rutgers NETID
 <pre>
  [NETID] 
@@ -49,6 +58,13 @@ Your Rutgers password in relation to your NETID
 <pre>
  [NETID PASSWORD] 
  Example: <i>secretpass</i>
+</pre>
+
+Enable/Disable SMS text message to be sent whenever a course opens up. If enabled, the next three configuration settings must be set, *SMS EMAIL* and *SMS PASSWORD*.
+<pre>
+ [ENABLE SMS] 
+ Values: <i>true, false</i>
+ Default: <i>false</i>
 </pre>
 
 Enter a Yahoo email that is registered to you. This is the email that will send out an SMS message to you. It is **highly** recommended to create a new email specifically for this purpose. You will receive spam because of the free method used to send text messages.
@@ -81,7 +97,7 @@ Should the program play a sound file when a course has been spotted. If alert ==
 <pre>
  [ALERT]
  Values: <i>true, false</i>
- Default: <i>false</i>
+ Default: <i>true</i>
 </pre>
 
 Pre-load the courses/sections to spot for on program execution.

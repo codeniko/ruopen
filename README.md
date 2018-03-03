@@ -1,10 +1,10 @@
-#RUopen? - Rutgers Course Spotter
+# RUopen? - Rutgers Course Spotter
 Is the course you need to graduate closed? Or maybe you want that Easy A class that is always closed. RUopen has got you covered! RUopen spots when the section of a course you want opens, automatically logs into webreg and registers you, and then notifies you of its success through a text message. Register for that course within mere seconds of it opening!
 
 *DISCLAIMER: I, Nikolay Feldman, do not take any responsibility and cannot be held liable for your use of this software. This software was created for an experimental purpose only to prove that it can be done. While it works as intended, I do not approve of its use. Rutgers policy does not allow the use of an automated system to register for courses. Use this at your own risk.*
 
 
-##Installation
+## Installation
 **Dependencies**<br>
 The versions specified below are the versions in which RUopen was developed. Developed on Debian 6 and tested on Debian 7<br>
 gcc >= *4.7.2*<br>
